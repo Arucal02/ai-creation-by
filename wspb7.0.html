@@ -1,0 +1,931 @@
+<html lang="zh-CN"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>宿舍卫生自动排班系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 引入html2canvas库 -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4F46E5',
+                        secondary: '#8B5CF6',
+                        accent: '#EC4899',
+                        neutral: '#1F2937',
+                        'base-100': '#F9FAFB',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'custom': '0 4px 20px -2px rgba(0, 0, 0, 0.1)',
+                    }
+                },
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .animate-float {
+                animation: float 6s ease-in-out infinite;
+            }
+            .animate-pulse-slow {
+                animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            }
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+            .editing-breathing-bg {
+                animation: breathing-bg 2s infinite;
+            }
+            @keyframes breathing-bg {
+                0%, 100% { background-color: rgba(79, 70, 229, 0.05); }
+                50% { background-color: rgba(79, 70, 229, 0.1); }
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-base-100 to-purple-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-7xl relative">
+        <!-- 右上角的生成次数统计 -->
+        <div class="absolute top-8 right-4 bg-white shadow-lg rounded-lg p-3 flex items-center z-10">
+            <i class="fa fa-calendar-check-o text-accent mr-2"></i>
+            <span class="text-sm font-medium">已生成排班表：</span>
+            <span id="schedule-count" class="ml-2 text-lg font-bold text-accent">0</span>
+            <span class="text-sm ml-1">份</span>
+        </div>
+
+        <!-- 页面标题 -->
+        <header class="text-center mb-12">
+            <h1 class="text-[clamp(2rem,5vw,3.5rem)] font-bold text-neutral mb-4 bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">宿舍卫生自动排班系统</h1>
+            <p class="text-gray-600 max-w-2xl mx-auto text-lg">轻松管理宿舍清洁轮值表，自动生成高效公平的卫生排班计划</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- 左侧：输入区域 -->
+            <div class="lg:col-span-1 space-y-6">
+                <!-- 人员输入卡片 -->
+                <div class="bg-white rounded-xl shadow-custom p-6 transition-all duration-300 hover:shadow-lg">
+                    <div class="flex items-center mb-4">
+                        <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                            <i class="fa fa-users"></i>
+                        </div>
+                        <h2 class="ml-3 text-xl font-semibold text-neutral">宿舍成员</h2>
+                    </div>
+                    <div class="space-y-4">
+                        <div id="people-list" class="space-y-2 max-h-60 overflow-y-auto scrollbar-hide pr-2">
+                            <div class="person-item flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                                <div class="relative flex-1">
+                                    <input type="text" placeholder="成员姓名" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary">
+                                    <button class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 focus:outline-none delete-input">
+                                        <i class="fa fa-times-circle"></i>
+                                    </button>
+                                </div>
+                                <button class="remove-person text-red-500 hover:text-red-700 transition-colors">
+                                    <i class="fa fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button id="add-person" class="w-full py-2 px-4 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors flex items-center justify-center">
+                            <i class="fa fa-plus mr-2"></i> 添加成员
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 卫生项目输入卡片 -->
+                <div class="bg-white rounded-xl shadow-custom p-6 transition-all duration-300 hover:shadow-lg">
+                    <div class="flex items-center mb-4">
+                        <div class="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary">
+                            <i class="fa fa-tasks"></i>
+                        </div>
+                        <h2 class="ml-3 text-xl font-semibold text-neutral">卫生项目</h2>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                                <label class="flex items-center">
+                                    <input type="checkbox" class="form-checkbox h-5 w-5 text-secondary rounded base-task-checkbox" checked="" data-task-name="倒垃圾">
+                                    <span class="ml-2 text-gray-700">倒垃圾</span>
+                                </label>
+                                <div class="flex items-center">
+                                    <select class="border border-gray-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary w-24 base-task-interval" data-task-name="倒垃圾">
+                                        <option value="1">1天</option>
+                                        <option value="2">2天</option>
+                                        <option value="3" selected="">3天</option>
+                                        <option value="4">4天</option>
+                                        <option value="5">5天</option>
+                                        <option value="6">6天</option>
+                                        <option value="7">7天</option>
+                                        <option value="week">每周</option>
+                                        <option value="month">每月</option>
+                                    </select>
+                                    <select class="border border-gray-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary w-32 ml-2 base-task-subinterval hidden" data-task-name="倒垃圾">
+                                        <option value="mon">周一</option>
+                                        <option value="tue">周二</option>
+                                        <option value="wed">周三</option>
+                                        <option value="thu">周四</option>
+                                        <option value="fri">周五</option>
+                                        <option value="sat">周六</option>
+                                        <option value="sun">周日</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                                <label class="flex items-center">
+                                    <input type="checkbox" class="form-checkbox h-5 w-5 text-secondary rounded base-task-checkbox" checked="" data-task-name="清理厕所">
+                                    <span class="ml-2 text-gray-700">清理厕所</span>
+                                </label>
+                                <div class="flex items-center">
+                                    <select class="border border-gray-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary w-24 base-task-interval" data-task-name="清理厕所">
+                                        <option value="1">1天</option>
+                                        <option value="2">2天</option>
+                                        <option value="3" selected="">3天</option>
+                                        <option value="4">4天</option>
+                                        <option value="5">5天</option>
+                                        <option value="6">6天</option>
+                                        <option value="7">7天</option>
+                                        <option value="week">每周</option>
+                                        <option value="month">每月</option>
+                                    </select>
+                                    <select class="border border-gray-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary w-32 ml-2 base-task-subinterval hidden" data-task-name="清理厕所">
+                                        <option value="mon">周一</option>
+                                        <option value="tue">周二</option>
+                                        <option value="wed">周三</option>
+                                        <option value="thu">周四</option>
+                                        <option value="fri">周五</option>
+                                        <option value="sat">周六</option>
+                                        <option value="sun">周日</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                                <label class="flex items-center">
+                                    <input type="checkbox" class="form-checkbox h-5 w-5 text-secondary rounded base-task-checkbox" checked="" data-task-name="扫地">
+                                    <span class="ml-2 text-gray-700">扫地</span>
+                                </label>
+                                <div class="flex items-center">
+                                    <select class="border border-gray-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary w-24 base-task-interval" data-task-name="扫地">
+                                        <option value="1">1天</option>
+                                        <option value="2">2天</option>
+                                        <option value="3" selected="">3天</option>
+                                        <option value="4">4天</option>
+                                        <option value="5">5天</option>
+                                        <option value="6">6天</option>
+                                        <option value="7">7天</option>
+                                        <option value="week">每周</option>
+                                        <option value="month">每月</option>
+                                    </select>
+                                    <select class="border border-gray-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary w-32 ml-2 base-task-subinterval hidden" data-task-name="扫地">
+                                        <option value="mon">周一</option>
+                                        <option value="tue">周二</option>
+                                        <option value="wed">周三</option>
+                                        <option value="thu">周四</option>
+                                        <option value="fri">周五</option>
+                                        <option value="sat">周六</option>
+                                        <option value="sun">周日</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                                <label class="flex items-center">
+                                    <input type="checkbox" class="form-checkbox h-5 w-5 text-secondary rounded base-task-checkbox" checked="" data-task-name="拖地">
+                                    <span class="ml-2 text-gray-700">拖地</span>
+                                </label>
+                                <div class="flex items-center">
+                                    <select class="border border-gray-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary w-24 base-task-interval" data-task-name="拖地">
+                                        <option value="1">1天</option>
+                                        <option value="2">2天</option>
+                                        <option value="3" selected="">3天</option>
+                                        <option value="4">4天</option>
+                                        <option value="5">5天</option>
+                                        <option value="6">6天</option>
+                                        <option value="7">7天</option>
+                                        <option value="week">每周</option>
+                                        <option value="month">每月</option>
+                                    </select>
+                                    <select class="border border-gray-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary w-32 ml-2 base-task-subinterval hidden" data-task-name="拖地">
+                                        <option value="mon">周一</option>
+                                        <option value="tue">周二</option>
+                                        <option value="wed">周三</option>
+                                        <option value="thu">周四</option>
+                                        <option value="fri">周五</option>
+                                        <option value="sat">周六</option>
+                                        <option value="sun">周日</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="task-list" class="space-y-2 max-h-40 overflow-y-auto scrollbar-hide pr-2">
+                            <div class="task-item flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                                <div class="relative flex-1 mr-2">
+                                    <input type="text" placeholder="自定义项目" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary">
+                                    <button class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 focus:outline-none delete-input">
+                                        <i class="fa fa-times-circle"></i>
+                                    </button>
+                                </div>
+                                <div class="flex items-center">
+                                    <select class="border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary w-24 task-interval">
+                                        <option value="1">1天</option>
+                                        <option value="2">2天</option>
+                                        <option value="3" selected>3天</option>
+                                        <option value="4">4天</option>
+                                        <option value="5">5天</option>
+                                        <option value="6">6天</option>
+                                        <option value="7">7天</option>
+                                        <option value="week">每周</option>
+                                        <option value="month">每月</option>
+                                    </select>
+                                    <select class="border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary w-32 ml-2 task-subinterval hidden">
+                                        <option value="mon">周一</option>
+                                        <option value="tue">周二</option>
+                                        <option value="wed">周三</option>
+                                        <option value="thu">周四</option>
+                                        <option value="fri">周五</option>
+                                        <option value="sat">周六</option>
+                                        <option value="sun">周日</option>
+                                    </select>
+                                </div>
+                                <button class="remove-task text-red-500 hover:text-red-700 transition-colors">
+                                    <i class="fa fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button id="add-task" class="w-full py-2 px-4 bg-secondary/10 text-secondary rounded-lg hover:bg-secondary/20 transition-colors flex items-center justify-center">
+                            <i class="fa fa-plus mr-2"></i> 添加项目
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 设置卡片 -->
+                <div class="bg-white rounded-xl shadow-custom p-6 transition-all duration-300 hover:shadow-lg">
+                    <div class="flex items-center mb-4">
+                        <div class="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center text-accent">
+                            <i class="fa fa-cog"></i>
+                        </div>
+                        <h2 class="ml-3 text-xl font-semibold text-neutral">排班设置</h2>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">开始日期</label>
+                            <input type="date" id="start-date" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">结束日期</label>
+                            <input type="date" id="end-date" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent">
+                        </div>
+                        <button id="generate-schedule" class="w-full py-3 px-4 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors font-medium shadow-md hover:shadow-lg transform hover:-translate-y-0.5 duration-300 flex items-center justify-center">
+                            <i class="fa fa-calendar-check-o mr-2"></i> 生成排班表
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：排班表展示区域 -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-xl shadow-custom p-6 transition-all duration-300 hover:shadow-lg h-full relative">
+                    <div class="flex items-center justify-between mb-6">
+                        <div class="flex items-center">
+                            <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                <i class="fa fa-calendar"></i>
+                            </div>
+                            <h2 class="ml-3 text-xl font-semibold text-neutral">排班表</h2>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button id="prev-month" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                                <i class="fa fa-chevron-left text-gray-600"></i>
+                            </button>
+                            <span id="current-month" class="text-lg font-medium text-gray-700"></span>
+                            <button id="next-month" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                                <i class="fa fa-chevron-right text-gray-600"></i>
+                            </button>
+                            <button id="export-schedule" class="p-2 rounded-full hover:bg-gray-100 transition-colors bg-primary/10 text-primary">
+                                <i class="fa fa-download"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 日历头部 -->
+                    <div class="grid grid-cols-7 gap-1 mb-2">
+                        <div class="text-center text-gray-500 font-medium py-2">周日</div>
+                        <div class="text-center text-gray-500 font-medium py-2">周一</div>
+                        <div class="text-center text-gray-500 font-medium py-2">周二</div>
+                        <div class="text-center text-gray-500 font-medium py-2">周三</div>
+                        <div class="text-center text-gray-500 font-medium py-2">周四</div>
+                        <div class="text-center text-gray-500 font-medium py-2">周五</div>
+                        <div class="text-center text-gray-500 font-medium py-2">周六</div>
+                    </div>
+
+                    <!-- 日历主体 -->
+                    <div id="calendar-grid" class="grid grid-cols-7 gap-1">
+                        <!-- 日历单元格将通过JavaScript动态生成 -->
+                    </div>
+
+                    <!-- 图例 -->
+                    <div class="mt-8">
+                        <h3 class="text-sm font-medium text-gray-700 mb-3">图例</h3>
+                        <div class="flex flex-wrap gap-4" id="legend">
+                            <!-- 图例将通过JavaScript动态生成 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页脚 -->
+        <footer class="mt-16 text-center text-gray-500 text-sm">
+            <p>© 2025 宿舍卫生自动排班系统 | 让宿舍生活更有序</p>
+            <p class="mt-1">@Github-Arucal02</p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化生成次数
+            let scheduleCount = localStorage.getItem('scheduleCount') || 0;
+            document.getElementById('schedule-count').textContent = scheduleCount;
+
+            // 设置默认日期为当月
+            const today = new Date();
+            document.getElementById('start-date').valueAsDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            document.getElementById('end-date').valueAsDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            
+            // 更新当前月份显示
+            updateCurrentMonthDisplay(today);
+
+            // 监听基础任务的间隔选择器变化
+            document.querySelectorAll('.base-task-interval').forEach(intervalSelect => {
+                intervalSelect.addEventListener('change', function() {
+                    const taskName = this.getAttribute('data-task-name');
+                    const subintervalSelect = document.querySelector(`.base-task-subinterval[data-task-name="${taskName}"]`);
+                    
+                    if (this.value === 'week' || this.value === 'month') {
+                        subintervalSelect.classList.remove('hidden');
+                        
+                        // 根据选择的是周还是月，更新子选项
+                        if (this.value === 'week') {
+                            subintervalSelect.innerHTML = `
+                                <option value="mon">周一</option>
+                                <option value="tue">周二</option>
+                                <option value="wed">周三</option>
+                                <option value="thu">周四</option>
+                                <option value="fri">周五</option>
+                                <option value="sat">周六</option>
+                                <option value="sun">周日</option>
+                            `;
+                        } else { // month
+                            subintervalSelect.innerHTML = `
+                                <option value="1">每月1号</option>
+                                <option value="15">每月15号</option>
+                                <option value="last">每月最后一天</option>
+                            `;
+                        }
+                    } else {
+                        subintervalSelect.classList.add('hidden');
+                    }
+                });
+            });
+
+            // 监听自定义任务的间隔选择器变化
+            document.querySelector('#task-list').addEventListener('change', function(e) {
+                if (e.target.classList.contains('task-interval')) {
+                    const intervalSelect = e.target;
+                    const subintervalSelect = intervalSelect.nextElementSibling;
+                    
+                    if (intervalSelect.value === 'week' || intervalSelect.value === 'month') {
+                        subintervalSelect.classList.remove('hidden');
+                        
+                        // 根据选择的是周还是月，更新子选项
+                        if (intervalSelect.value === 'week') {
+                            subintervalSelect.innerHTML = `
+                                <option value="mon">周一</option>
+                                <option value="tue">周二</option>
+                                <option value="wed">周三</option>
+                                <option value="thu">周四</option>
+                                <option value="fri">周五</option>
+                                <option value="sat">周六</option>
+                                <option value="sun">周日</option>
+                            `;
+                        } else { // month
+                            subintervalSelect.innerHTML = `
+                                <option value="1">每月1号</option>
+                                <option value="15">每月15号</option>
+                                <option value="last">每月最后一天</option>
+                            `;
+                        }
+                    } else {
+                        subintervalSelect.classList.add('hidden');
+                    }
+                }
+            });
+
+            // 人员管理
+            const peopleList = document.getElementById('people-list');
+            const addPersonBtn = document.getElementById('add-person');
+            
+            addPersonBtn.addEventListener('click', function() {
+                const personItem = document.createElement('div');
+                personItem.className = 'person-item flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors';
+                personItem.innerHTML = `
+                    <div class="relative flex-1">
+                        <input type="text" placeholder="成员姓名" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary">
+                        <button class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 focus:outline-none delete-input">
+                            <i class="fa fa-times-circle"></i>
+                        </button>
+                    </div>
+                    <button class="remove-person text-red-500 hover:text-red-700 transition-colors">
+                        <i class="fa fa-times"></i>
+                    </button>
+                `;
+                peopleList.appendChild(personItem);
+                
+                // 添加删除按钮事件
+                const deleteBtn = personItem.querySelector('.delete-input');
+                const input = personItem.querySelector('input');
+                
+                deleteBtn.addEventListener('click', function() {
+                    input.value = '';
+                });
+                
+                // 添加删除行事件
+                personItem.querySelector('.remove-person').addEventListener('click', function() {
+                    personItem.remove();
+                });
+                
+                // 自动聚焦新添加的输入框
+                input.focus();
+            });
+
+            // 任务管理
+            const taskList = document.getElementById('task-list');
+            const addTaskBtn = document.getElementById('add-task');
+            
+            addTaskBtn.addEventListener('click', function() {
+                const taskItem = document.createElement('div');
+                taskItem.className = 'task-item flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors';
+                taskItem.innerHTML = `
+                    <div class="relative flex-1 mr-2">
+                        <input type="text" placeholder="自定义项目" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary">
+                        <button class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 focus:outline-none delete-input">
+                            <i class="fa fa-times-circle"></i>
+                        </button>
+                    </div>
+                    <div class="flex items-center">
+                        <select class="border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary w-24 task-interval">
+                            <option value="1">1天</option>
+                            <option value="2">2天</option>
+                            <option value="3" selected>3天</option>
+                            <option value="4">4天</option>
+                            <option value="5">5天</option>
+                            <option value="6">6天</option>
+                            <option value="7">7天</option>
+                            <option value="week">每周</option>
+                            <option value="month">每月</option>
+                        </select>
+                        <select class="border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary w-32 ml-2 task-subinterval hidden">
+                            <option value="mon">周一</option>
+                            <option value="tue">周二</option>
+                            <option value="wed">周三</option>
+                            <option value="thu">周四</option>
+                            <option value="fri">周五</option>
+                            <option value="sat">周六</option>
+                            <option value="sun">周日</option>
+                        </select>
+                    </div>
+                    <button class="remove-task text-red-500 hover:text-red-700 transition-colors">
+                        <i class="fa fa-times"></i>
+                    </button>
+                `;
+                taskList.appendChild(taskItem);
+                
+                // 添加删除按钮事件
+                const deleteBtn = taskItem.querySelector('.delete-input');
+                const input = taskItem.querySelector('input');
+                
+                deleteBtn.addEventListener('click', function() {
+                    input.value = '';
+                });
+                
+                // 添加删除行事件
+                taskItem.querySelector('.remove-task').addEventListener('click', function() {
+                    taskItem.remove();
+                });
+                
+                // 自动聚焦新添加的输入框
+                input.focus();
+            });
+
+            // 月份切换
+            let currentDisplayDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            
+            document.getElementById('prev-month').addEventListener('click', function() {
+                currentDisplayDate = new Date(currentDisplayDate.getFullYear(), currentDisplayDate.getMonth() - 1, 1);
+                updateCurrentMonthDisplay(currentDisplayDate);
+                generateSchedule(); // 重新生成排班表
+            });
+            
+            document.getElementById('next-month').addEventListener('click', function() {
+                currentDisplayDate = new Date(currentDisplayDate.getFullYear(), currentDisplayDate.getMonth() + 1, 1);
+                updateCurrentMonthDisplay(currentDisplayDate);
+                generateSchedule(); // 重新生成排班表
+            });
+
+            // 更新当前月份显示
+            function updateCurrentMonthDisplay(date) {
+                const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
+                document.getElementById('current-month').textContent = `${date.getFullYear()}年 ${monthNames[date.getMonth()]}`;
+            }
+
+            // 生成排班表
+            document.getElementById('generate-schedule').addEventListener('click', function() {
+                // 更新生成次数并保存到localStorage
+                scheduleCount++;
+                localStorage.setItem('scheduleCount', scheduleCount);
+                document.getElementById('schedule-count').textContent = scheduleCount;
+                
+                // 执行原有的生成排班表逻辑
+                generateSchedule();
+            });
+            
+            // 初始生成排班表
+            generateSchedule();
+
+            // 生成排班表函数
+            function generateSchedule() {
+                // 获取用户输入
+                const peopleInputs = document.querySelectorAll('.person-item input');
+                const people = Array.from(peopleInputs)
+                    .map(input => input.value.trim())
+                    .filter(name => name);
+                
+                // 验证是否有成员
+                if (people.length === 0) {
+                    alert('请至少添加一位宿舍成员！');
+                    return;
+                }
+                
+                // 获取基础任务设置
+                const baseTasksCheckboxes = document.querySelectorAll('.base-task-checkbox');
+                const baseTasksIntervals = document.querySelectorAll('.base-task-interval');
+                const baseTasksSubintervals = document.querySelectorAll('.base-task-subinterval');
+                
+                const baseTasks = Array.from(baseTasksCheckboxes).map((checkbox, index) => {
+                    const intervalSelect = baseTasksIntervals[index];
+                    const interval = intervalSelect.value;
+                    
+                    let subinterval = null;
+                    if (interval === 'week' || interval === 'month') {
+                        const subintervalSelect = baseTasksSubintervals[index];
+                        subinterval = subintervalSelect.value;
+                    }
+                    
+                    return {
+                        name: checkbox.getAttribute('data-task-name'),
+                        interval: interval,
+                        subinterval: subinterval,
+                        enabled: checkbox.checked
+                    };
+                }).filter(task => task.enabled);
+                
+                // 获取自定义任务
+                const customTaskItems = document.querySelectorAll('.task-item');
+                const customTasks = Array.from(customTaskItems).map(item => {
+                    const input = item.querySelector('input');
+                    const intervalSelect = item.querySelector('.task-interval');
+                    const subintervalSelect = item.querySelector('.task-subinterval');
+                    
+                    const name = input.value.trim();
+                    const interval = intervalSelect.value;
+                    
+                    // 如果任务名称为空，则跳过
+                    if (!name) return null;
+                    
+                    let subinterval = null;
+                    if (interval === 'week' || interval === 'month') {
+                        subinterval = subintervalSelect.value;
+                    }
+                    
+                    return {
+                        name: name,
+                        interval: interval,
+                        subinterval: subinterval,
+                        enabled: true
+                    };
+                }).filter(task => task !== null);
+                
+                // 合并基础任务和自定义任务
+                const allTasks = [...baseTasks, ...customTasks];
+                
+                // 验证是否有任务
+                if (allTasks.length === 0) {
+                    alert('请至少选择一个卫生项目！');
+                    return;
+                }
+                
+                // 获取日期范围
+                const startDateInput = document.getElementById('start-date');
+                const endDateInput = document.getElementById('end-date');
+                
+                const startDate = startDateInput.value ? new Date(startDateInput.value) : new Date();
+                const endDate = endDateInput.value ? new Date(endDateInput.value) : new Date();
+                
+                // 验证日期范围
+                if (startDate > endDate) {
+                    alert('开始日期不能晚于结束日期！');
+                    return;
+                }
+                
+                // 生成排班数据
+                const scheduleData = generateScheduleData(startDate, endDate, people, allTasks);
+                
+                // 渲染日历
+                renderCalendar(startDate, endDate, scheduleData, people, allTasks);
+                
+                // 渲染图例
+                renderLegend(allTasks);
+            }
+            
+            // 生成排班数据
+            function generateScheduleData(startDate, endDate, people, tasks) {
+                const schedule = {};
+                const dateCount = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+                
+                // 为每一天初始化排班数据
+                for (let i = 0; i < dateCount; i++) {
+                    const currentDate = new Date(startDate);
+                    currentDate.setDate(startDate.getDate() + i);
+                    const dateKey = currentDate.toISOString().split('T')[0];
+                    
+                    schedule[dateKey] = {
+                        date: currentDate,
+                        tasks: []
+                    };
+                }
+                
+                // 为每个任务分配负责人
+                tasks.forEach((task, taskIndex) => {
+                    // 计算每个任务的起始日期
+                    let taskStartDate = new Date(startDate);
+                    
+                    // 如果是每周或每月的任务，调整起始日期
+                    if (task.interval === 'week' || task.interval === 'month') {
+                        if (task.interval === 'week') {
+                            // 找到第一个符合条件的星期几
+                            const targetDay = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(task.subinterval);
+                            while (taskStartDate.getDay() !== targetDay) {
+                                taskStartDate.setDate(taskStartDate.getDate() + 1);
+                                
+                                // 如果超过了结束日期，跳过这个任务
+                                if (taskStartDate > endDate) return;
+                            }
+                        } else if (task.interval === 'month') {
+                            // 找到第一个符合条件的日期
+                            if (task.subinterval === 'last') {
+                                // 每月最后一天
+                                taskStartDate.setMonth(taskStartDate.getMonth() + 1);
+                                taskStartDate.setDate(0); // 设置为上个月的最后一天
+                            } else {
+                                // 每月指定日期
+                                const targetDate = parseInt(task.subinterval);
+                                taskStartDate.setDate(targetDate);
+                                
+                                // 如果设置的日期小于当前日期，移动到下个月
+                                if (taskStartDate < startDate) {
+                                    taskStartDate.setMonth(taskStartDate.getMonth() + 1);
+                                    taskStartDate.setDate(targetDate);
+                                }
+                            }
+                            
+                            // 如果超过了结束日期，跳过这个任务
+                            if (taskStartDate > endDate) return;
+                        }
+                    }
+                    
+                    // 为任务分配负责人（循环使用成员列表）
+                    let personIndex = taskIndex % people.length;
+                    
+                    // 根据任务间隔安排任务
+                    let currentTaskDate = new Date(taskStartDate);
+                    
+                    while (currentTaskDate <= endDate) {
+                        const dateKey = currentTaskDate.toISOString().split('T')[0];
+                        
+                        // 确保日期在范围内
+                        if (dateKey in schedule) {
+                            schedule[dateKey].tasks.push({
+                                name: task.name,
+                                person: people[personIndex]
+                            });
+                            
+                            // 移动到下一个负责人
+                            personIndex = (personIndex + 1) % people.length;
+                        }
+                        
+                        // 计算下一个任务日期
+                        if (task.interval === 'week') {
+                            currentTaskDate.setDate(currentTaskDate.getDate() + 7);
+                        } else if (task.interval === 'month') {
+                            currentTaskDate.setMonth(currentTaskDate.getMonth() + 1);
+                            
+                            // 如果是每月最后一天，确保设置为正确的最后一天
+                            if (task.subinterval === 'last') {
+                                currentTaskDate.setDate(0);
+                            }
+                        } else {
+                            // 按天计算
+                            const days = parseInt(task.interval);
+                            currentTaskDate.setDate(currentTaskDate.getDate() + days);
+                        }
+                    }
+                });
+                
+                return schedule;
+            }
+            
+            // 渲染日历
+            function renderCalendar(startDate, endDate, scheduleData, people, tasks) {
+                const calendarGrid = document.getElementById('calendar-grid');
+                calendarGrid.innerHTML = '';
+                
+                // 获取当前显示月份的第一天和最后一天
+                const firstDayOfMonth = new Date(currentDisplayDate.getFullYear(), currentDisplayDate.getMonth(), 1);
+                const lastDayOfMonth = new Date(currentDisplayDate.getFullYear(), currentDisplayDate.getMonth() + 1, 0);
+                
+                // 计算当月第一天是星期几（0-6）
+                const firstDayIndex = firstDayOfMonth.getDay();
+                
+                // 计算需要显示的上个月的天数
+                const prevMonthLastDate = new Date(currentDisplayDate.getFullYear(), currentDisplayDate.getMonth(), 0).getDate();
+                
+                // 生成日历单元格
+                let dayCount = 1;
+                let nextMonthDay = 1;
+                
+                // 计算需要显示的总单元格数（6行7列）
+                const totalCells = 6 * 7;
+                
+                for (let i = 0; i < totalCells; i++) {
+                    let currentDate;
+                    let isCurrentMonth = true;
+                    let isInRange = false;
+                    let dateKey = '';
+                    
+                    // 上个月的日期
+                    if (i < firstDayIndex) {
+                        const day = prevMonthLastDate - (firstDayIndex - i - 1);
+                        currentDate = new Date(currentDisplayDate.getFullYear(), currentDisplayDate.getMonth() - 1, day);
+                        isCurrentMonth = false;
+                    } 
+                    // 当月的日期
+                    else if (i < firstDayIndex + lastDayOfMonth.getDate()) {
+                        const day = dayCount++;
+                        currentDate = new Date(currentDisplayDate.getFullYear(), currentDisplayDate.getMonth(), day);
+                        dateKey = currentDate.toISOString().split('T')[0];
+                        
+                        // 检查是否在日期范围内
+                        isInRange = currentDate >= startDate && currentDate <= endDate;
+                    } 
+                    // 下个月的日期
+                    else {
+                        const day = nextMonthDay++;
+                        currentDate = new Date(currentDisplayDate.getFullYear(), currentDisplayDate.getMonth() + 1, day);
+                        isCurrentMonth = false;
+                    }
+                    
+                    // 创建日历单元格
+                    const cell = document.createElement('div');
+                    cell.className = `aspect-square rounded-lg p-2 transition-all duration-200 ${
+                        isCurrentMonth ? 'bg-white hover:shadow-md' : 'bg-gray-50 text-gray-400'
+                    }`;
+                    
+                    // 添加日期
+                    const dateElement = document.createElement('div');
+                    dateElement.className = `text-sm font-medium mb-1 ${
+                        isCurrentMonth ? (isInRange ? 'text-gray-800' : 'text-gray-400') : 'text-gray-400'
+                    }`;
+                    dateElement.textContent = currentDate.getDate();
+                    cell.appendChild(dateElement);
+                    
+                    // 如果是当月且在日期范围内，添加任务
+                    if (isCurrentMonth && isInRange) {
+                        // 检查当天是否有任务
+                        if (dateKey in scheduleData && scheduleData[dateKey].tasks.length > 0) {
+                            const tasksContainer = document.createElement('div');
+                            tasksContainer.className = 'space-y-1 mt-1 text-xs';
+                            
+                            scheduleData[dateKey].tasks.forEach(task => {
+                                // 为每个任务创建一个标签
+                                const taskElement = document.createElement('div');
+                                
+                                // 计算任务的颜色（基于任务名称的哈希值）
+                                const taskHash = task.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                                const colors = ['bg-primary/10 text-primary', 'bg-secondary/10 text-secondary', 'bg-accent/10 text-accent', 'bg-green-100 text-green-800', 'bg-yellow-100 text-yellow-800', 'bg-red-100 text-red-800'];
+                                const colorIndex = taskHash % colors.length;
+                                
+                                taskElement.className = `px-1.5 py-0.5 rounded-full ${colors[colorIndex]} truncate`;
+                                taskElement.textContent = `${task.name}: ${task.person}`;
+                                tasksContainer.appendChild(taskElement);
+                            });
+                            
+                            cell.appendChild(tasksContainer);
+                        }
+                        
+                        // 今天的日期添加特殊标记
+                        const today = new Date();
+                        if (currentDate.getDate() === today.getDate() && 
+                            currentDate.getMonth() === today.getMonth() && 
+                            currentDate.getFullYear() === today.getFullYear()) {
+                            dateElement.className += ' font-bold text-accent';
+                        }
+                    }
+                    
+                    calendarGrid.appendChild(cell);
+                }
+            }
+            
+            // 渲染图例
+            function renderLegend(tasks) {
+                const legendContainer = document.getElementById('legend');
+                legendContainer.innerHTML = '';
+                
+                // 为每个任务创建图例项
+                tasks.forEach(task => {
+                    // 计算任务的颜色（基于任务名称的哈希值）
+                    const taskHash = task.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                    const colors = ['bg-primary/10 text-primary', 'bg-secondary/10 text-secondary', 'bg-accent/10 text-accent', 'bg-green-100 text-green-800', 'bg-yellow-100 text-yellow-800', 'bg-red-100 text-red-800'];
+                    const colorIndex = taskHash % colors.length;
+                    
+                    const legendItem = document.createElement('div');
+                    legendItem.className = 'flex items-center';
+                    
+                    const colorBox = document.createElement('div');
+                    colorBox.className = `w-3 h-3 rounded-full mr-2 ${colors[colorIndex].replace('bg-', '').replace('/10', '')}`;
+                    
+                    const taskName = document.createElement('span');
+                    taskName.className = 'text-sm text-gray-700';
+                    taskName.textContent = task.name;
+                    
+                    legendItem.appendChild(colorBox);
+                    legendItem.appendChild(taskName);
+                    legendContainer.appendChild(legendItem);
+                });
+            }
+            
+            // 导出排班表为图片
+            document.getElementById('export-schedule').addEventListener('click', function() {
+                const calendarContainer = document.querySelector('.lg\\:col-span-2 > div');
+                
+                // 显示导出中提示
+                const originalContent = calendarContainer.innerHTML;
+                calendarContainer.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-full">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+                        <p class="text-lg font-medium text-gray-700">正在生成图片...</p>
+                    </div>
+                `;
+                
+                // 延迟执行，让用户看到加载状态
+                setTimeout(() => {
+                    // 恢复原始内容
+                    calendarContainer.innerHTML = originalContent;
+                    
+                    // 使用html2canvas捕获排班表区域
+                    html2canvas(calendarContainer, {
+                        scale: 2, // 提高分辨率
+                        useCORS: true,
+                        logging: false
+                    }).then(canvas => {
+                        // 将Canvas转换为JPG格式的图片
+                        const imgData = canvas.toDataURL('image/jpeg', 0.9); // 0.9是图片质量
+                        
+                        // 创建下载链接
+                        const link = document.createElement('a');
+                        link.href = imgData;
+                        
+                        // 设置文件名
+                        const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
+                        const fileName = `${currentDisplayDate.getFullYear()}年${monthNames[currentDisplayDate.getMonth()]}宿舍卫生排班表.jpg`;
+                        link.download = fileName;
+                        
+                        // 模拟点击下载
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }).catch(error => {
+                        console.error('导出图片失败:', error);
+                        alert('导出图片失败，请重试');
+                    });
+                }, 500);
+            });
+        });
+    </script>
+</body></html>    
